@@ -9,42 +9,47 @@ import haiku as hk
 import jax
 from jax import numpy as jnp
 import optax
-
-from .module import Readout, SharedEmbed
+from argparse import Namespace
+from .module import Readout
 
 
 def get_shapes(params):
     return jax.tree_map(lambda p: p.shape, params)
 
-
+def maybe_unfreeze(x):
+    try:
+        x = x.unfreeze()
+    except AttributeError:
+        pass
+    return x
 class Mup:
     """Class which tracks infinite shapes, and applies per-parameter learning rates/multipliers"""
 
     def __init__(self):
-        self.base_variables = None
+        self.base_shapes = None
         self._params_to_scale = {}
 
-    def set_base_variables(self, variables):
-        self.base_variables = variables.unfreeze()
+    def set_base_shapes(self, variables):
+        self.base_shapes = jax.tree_util.tree_map(lambda x:Namespace(shape=x.shape), maybe_unfreeze(variables))
 
     def _scale(self, tensor, div):
         return tensor / (div ** 0.5)
 
-    def set_target_variables(self, variables):
+    def set_target_shapes(self, variables):
         from functools import partial
 
-        variables = variables.unfreeze()
+        shapes = jax.tree_util.tree_map(lambda x:Namespace(shape=x.shape), maybe_unfreeze(variables))
         f_sgd = partial(self._get_inf_ratios, optimizer='sgd')
-        self._sgd_lrs = jax.tree_util.tree_map(f_sgd, self.base_variables, variables)
+        self._sgd_lrs = jax.tree_util.tree_map(f_sgd, self.base_shapes, shapes)['params']
 
         f_adam = partial(self._get_inf_ratios, optimizer='adam')
-        self._adam_lrs = jax.tree_util.tree_map(f_adam, self.base_variables, variables)
+        self._adam_lrs = jax.tree_util.tree_map(f_adam, self.base_shapes, shapes)['params']
 
         f_width_mults = partial(self._get_inf_ratios, optimizer=None, )
-        self._width_mults = jax.tree_util.tree_map(f_width_mults, self.base_variables, variables)
+        self._width_mults = jax.tree_util.tree_map(f_width_mults, self.base_shapes, variables)
 
         from flatdict import FlatDict
-        fdp = FlatDict(variables)
+        fdp = FlatDict(maybe_unfreeze(variables))
         wm = FlatDict(self._width_mults)
         for k in dict(fdp):
             if ("Readout" in k) and ("kernel" in k):
@@ -67,11 +72,9 @@ class Mup:
                 'Attempted to wrap optimizer before initializing network. Did you forget to use init_base/init_target/apply_mup?')
 
         def init_fn(params):
-            del params
             return optax.EmptyState()
 
         def update_fn(updates, state, params=None):
-            del params
             updates = jax.tree_map(
                 lambda update, scale: update * scale,
                 updates,
@@ -85,7 +88,7 @@ class Mup:
             optax.GradientTransformation(init_fn, update_fn)
         )
 
-    def _get_inf_ratios(self, base: jnp.DeviceArray, target: jnp.DeviceArray,
+    def _get_inf_ratios(self, base: tuple, target: tuple,
                         optimizer: T.Literal['sgd', 'adam', None] = None,
                         ):
         n_inf = sum(a != b for a, b in zip(base.shape, target.shape))

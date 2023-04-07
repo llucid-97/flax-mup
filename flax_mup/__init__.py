@@ -1,4 +1,5 @@
 """"A simple port of μP  to Flax/JAX."""
 
 from .mup import get_shapes, Mup
-from .module import Readout, SharedEmbed, SharedReadout
+from .module import Readout
+from . import coord_check

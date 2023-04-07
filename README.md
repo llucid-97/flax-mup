@@ -3,6 +3,8 @@
 This is a fork of Davis Yoshida's [haiku implementation](https://github.com/davisyoshida/haiku-mup) of Yang and Hu et al.'s [μP project](https://github.com/microsoft/mup), porting it to Flax.
 It's not feature complete, and we're very open to suggestions on improving the usability.
 
+**NOTE**: We have not yet added support for shared embedding layers
+
 ## Installation
 
 ```
@@ -23,43 +25,43 @@ Here's the same kind of plot for 3 layer transformers on the Penn Treebank, this
 Note that the optima have the same value for n_embd=80. That's because the other hyperparameters were tuned using an SP model with that width, so this shouldn't be biased in favor of μP.
 
 ## Usage
-```python
-from functools import partial
 
+```python
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
-from optax import adam, chain
+from optax import adam
 
-from flax_mup import apply_mup, Mup, Readout
+from flax_mup import Mup, Readout
+
 
 class MyModel(nn.Module):
     width: int
     n_classes: int = 10
 
+    @nn.compact
     def __call__(self, x):
         x = nn.Dense(self.width)(x)
         x = jax.nn.relu(x)
-        return Readout(2)(x) # 1. Replace output layer with Readout layer
+        return Readout(2)(x)  # 1. Replace output layer with Readout layer
 
-def fn(x, width=100):
-    with apply_mup(): # 2. Modify parameter creation with apply_mup()
-        return MyModel(width=width)(x)
 
 mup = Mup()
 
 init_input = jnp.zeros(123)
 base_model = MyModel(width=1)
+base_variables = base_model.init(jax.random.PRNGKey(0), init_input)
+mup.set_base_shapes(base_variables)
 
 model = MyModel(width=100)
-
-
-model = mup.wrap_model(model) # 5. Modify your model with Mup
+params = model.init(jax.random.PRNGKey(0), init_input)
+params = mup.set_target_shapes(params)
 
 optimizer = adam(3e-4)
-optimizer = mup.wrap_optimizer(optimizer, adam=True) # 6. Use wrap_optimizer to get layer specific learning rates
+optimizer = mup.wrap_optimizer(optimizer, adam=True)  # 6. Use wrap_optimizer to get layer specific learning rates
 
 # Now the model can be trained as normal
+
 ```
 ### Summary
 1. Replace output layers with `Readout` layers
