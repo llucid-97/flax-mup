@@ -107,8 +107,10 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--lr', type=float, default=0.1)
-    parser.add_argument('--output_mult', type=float, default=32)
-    parser.add_argument('--input_mult', type=float, default=0.00390625)
+    parser.add_argument('--output_mult', type=float, default=1.0 #32
+                        )
+    parser.add_argument('--input_mult', type=float, default=1.0 #0.00390625
+                        )
     parser.add_argument('--init_std', type=float, default=1.0)
     parser.add_argument('--no_shuffle', action='store_true')
     parser.add_argument('--log_interval', type=int, default=300)

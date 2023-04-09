@@ -1,3 +1,4 @@
+import dataclasses
 from collections import defaultdict
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -16,29 +17,28 @@ from .module import Readout
 def get_shapes(params):
     return jax.tree_map(lambda p: p.shape, params)
 
+
 def maybe_unfreeze(x):
     try:
         x = x.unfreeze()
     except AttributeError:
         pass
     return x
+
+
+@dataclasses.dataclass
 class Mup:
     """Class which tracks infinite shapes, and applies per-parameter learning rates/multipliers"""
 
-    def __init__(self):
-        self.base_shapes = None
-        self._params_to_scale = {}
+    readout_zero_init: bool = True
 
     def set_base_shapes(self, variables):
-        self.base_shapes = jax.tree_util.tree_map(lambda x:Namespace(shape=x.shape), maybe_unfreeze(variables))
-
-    def _scale(self, tensor, div):
-        return tensor / (div ** 0.5)
+        self.base_shapes = jax.tree_util.tree_map(lambda x: Namespace(shape=x.shape), maybe_unfreeze(variables))
 
     def set_target_shapes(self, variables):
         from functools import partial
 
-        shapes = jax.tree_util.tree_map(lambda x:Namespace(shape=x.shape), maybe_unfreeze(variables))
+        shapes = jax.tree_util.tree_map(lambda x: Namespace(shape=x.shape), maybe_unfreeze(variables))
         f_sgd = partial(self._get_inf_ratios, optimizer='sgd')
         self._sgd_lrs = jax.tree_util.tree_map(f_sgd, self.base_shapes, shapes)['params']
 
@@ -60,8 +60,10 @@ class Mup:
                 path[-1] = 'divisor'
                 k_mup_divisor = ':'.join(path)
                 fdp[k_mup_divisor] *= wm[k]
-                self._params_to_scale[k] = 1 / wm[k]
-                fdp[k] = self._scale(fdp[k], self._params_to_scale[k])
+                if self.readout_zero_init:
+                    fdp[k] *= 0.
+                else:
+                    fdp[k] /= (1 / wm[k]) ** 0.5
 
         return fdp.as_dict()
 
