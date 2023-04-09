@@ -1,16 +1,14 @@
-⚠ work in progress... ⚠
-
 # MUP for Flax
 
 This is a fork of Davis Yoshida's [haiku implementation](https://github.com/davisyoshida/haiku-mup) of Yang and Hu et al.'s [μP project](https://github.com/microsoft/mup), porting it to Flax.
 It's not feature complete, and we're very open to suggestions on improving the usability.
 
-**NOTE**: We have not yet added support for shared embedding layers
+**NOTE**: We have not yet added support for shared embedding layers.
 
 ## Installation
 
 ```
-pip install flax-mup
+pip install git+https://github.com/llucid-97/flax-mup
 ```
 
 ## Learning rate demo
@@ -45,7 +43,7 @@ class MyModel(nn.Module):
     def __call__(self, x):
         x = nn.Dense(self.width)(x)
         x = jax.nn.relu(x)
-        return Readout(2)(x)  # 1. Replace output layer with Readout layer
+        return Readout(2)(x)  # Replace output layer with Readout layer
 
 
 mup = Mup()
@@ -60,29 +58,8 @@ params = model.init(jax.random.PRNGKey(0), init_input)
 params = mup.set_target_shapes(params)
 
 optimizer = adam(3e-4)
-optimizer = mup.wrap_optimizer(optimizer, adam=True)  # 6. Use wrap_optimizer to get layer specific learning rates
+optimizer = mup.wrap_optimizer(optimizer, adam=True)  # Use wrap_optimizer to get layer specific learning rates
 
 # Now the model can be trained as normal
 
-```
-### Summary
-1. Replace output layers with `Readout` layers
-2. Modify parameter creation with the `apply_mup()` context manager
-3. Initialize a base model inside a `Mup.init_base()` context
-4. Initialize the target model inside a `Mup.init_target()` context
-5. Wrap the model with `Mup.wrap_model`
-6. Wrap optimizer with `Mup.wrap_optimizer`
-
-## Shared Input/Output embeddings
-If you want to use the input embedding matrix as the output layer's weight matrix make the following two replacements:
-
-```python
-# old: embedding_layer = hk.Embed(*args, **kwargs)
-# new:
-embedding_layer = flax_mup.SharedEmbed(*args, **kwargs)
-input_embeds = embedding_layer(x)
-
-#old: output = hk.Linear(n_classes)(x)
-# new:
-output = flax_mup.SharedReadout()(embedding_layer.get_weights(), x) 
 ```
