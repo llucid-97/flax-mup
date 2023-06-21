@@ -1,4 +1,5 @@
 import os
+os.environ["XLA_FLAGS"]="--xla_gpu_strict_conv_algorithm_picker=false"
 os.environ['KMP_DUPLICATE_LIB_OK'] = "TRUE"
 os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
 
@@ -156,12 +157,12 @@ if __name__ == '__main__':
             flatten = lambda x:jnp.reshape(x,(x.shape[0],-1))
             x = jnp.reshape(x,(x.shape[0],3,32,32))
             x = jnp.moveaxis(x,1,-1)
-            x = nn.Conv(self.width,(3,3), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
+            x = nn.Conv(self.width,(3,3),strides=(2,2), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
             trace.append(flatten(x))
             x = x * self.input_mult ** 0.5
             x = self.nonlin(x)
             trace.append(flatten(x))
-            x = nn.Conv(self.width,(3,3), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
+            x = nn.Conv(self.width,(3,3),strides=(2,2), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
             trace.append(flatten(x))
             x = self.nonlin(x)
             x = x * self.output_mult

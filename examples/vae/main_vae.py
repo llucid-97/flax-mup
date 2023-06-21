@@ -1,5 +1,4 @@
 import os
-os.environ["XLA_FLAGS"]="--xla_gpu_strict_conv_algorithm_picker=false"
 os.environ['KMP_DUPLICATE_LIB_OK'] = "TRUE"
 os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
 
@@ -11,33 +10,33 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 import typing as T
-
+from tensorflow_probability.substrates.jax import distributions as tfd
 # import os
 # os.environ['KMP_DUPLICATE_LIB_OK'] = "TRUE"
 from flax_mup.coord_check import get_coord_data, plot_coord_data
-from flax_mup import Mup, Readout
+from flax_mup import Mup, Readout,ReadoutConv
 
 
 def coord_check(mup: bool, lr, train_loader, nsteps, nseeds, args, plotdir='', legend=False):
     def gen(w, standparam=False):
         def f():
-            model = ConvNet(width=w,
-                            nonlin=nn.tanh,
-                            output_mult=args.output_mult,
-                            input_mult=args.input_mult)
+            model = VAE(width=w,
+                        nonlin=nn.tanh,
+                        output_mult=args.output_mult,
+                        input_mult=args.input_mult)
 
             init_input = jnp.zeros((1, 3072))
-            variables = model.init(jax.random.PRNGKey(0), init_input)
+            variables = model.init(dict(params=jax.random.PRNGKey(0), sample=jax.random.PRNGKey(1)), init_input)
             variables = model.scale_parameters(variables.unfreeze())
             if standparam:
                 mup_state = None
             else:
                 mup_state = Mup()
-                base_model = ConvNet(width=args.base_width,
-                                     nonlin=nn.tanh,
-                                     output_mult=args.output_mult,
-                                     input_mult=args.input_mult)
-                base_vars = base_model.init(jax.random.PRNGKey(0), init_input)
+                base_model = VAE(width=args.base_width,
+                                 nonlin=nn.tanh,
+                                 output_mult=args.output_mult,
+                                 input_mult=args.input_mult)
+                base_vars = base_model.init(dict(params=jax.random.PRNGKey(0), sample=jax.random.PRNGKey(1)), init_input)
                 base_vars = model.scale_parameters(base_vars.unfreeze())
 
                 mup_state.set_base_shapes(base_vars)
@@ -53,7 +52,7 @@ def coord_check(mup: bool, lr, train_loader, nsteps, nseeds, args, plotdir='', l
     models = {w: gen(w, standparam=not mup) for w in widths}
 
     df = get_coord_data(models, train_loader, mup=mup, lr=lr, optimizer='adam', flatten_input=True, nseeds=nseeds,
-                        nsteps=nsteps, lossfn='nll')
+                        nsteps=nsteps, lossfn='vae_mse')
 
     prm = 'μP' if mup else 'SP'
     df = df.replace([np.inf, float('inf'), np.nan], 1e99)
@@ -100,7 +99,7 @@ if __name__ == '__main__':
             args.output_mult = 0.125
     ''', formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--seed', type=int, default=1)
-    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--lr', type=float, default=0.1)
@@ -143,7 +142,7 @@ if __name__ == '__main__':
                              num_workers=2)
 
 
-    class ConvNet(nn.Module):
+    class VAE(nn.Module):
         width: int = 128
         num_classes: int = 10
         nonlin: T.Callable = nn.relu
@@ -157,17 +156,17 @@ if __name__ == '__main__':
             flatten = lambda x:jnp.reshape(x,(x.shape[0],-1))
             x = jnp.reshape(x,(x.shape[0],3,32,32))
             x = jnp.moveaxis(x,1,-1)
-            x = nn.Conv(self.width,(3,3),strides=(2,2), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
+            x = nn.Conv(self.width,(3,3), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
             trace.append(flatten(x))
             x = x * self.input_mult ** 0.5
             x = self.nonlin(x)
             trace.append(flatten(x))
-            x = nn.Conv(self.width,(3,3),strides=(2,2), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
+            x = nn.Conv(self.width,(3,3), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
             trace.append(flatten(x))
             x = self.nonlin(x)
             x = x * self.output_mult
             trace.append(flatten(x))
-            x = Readout(self.num_classes, use_bias=False)(flatten(x))  # 1. Replace output layer with Readout layer
+            x = ReadoutConv(3,(3,3), use_bias=False)(x)  # 1. Replace output layer with Readout layer
             trace.append(flatten(x))
             return x, trace
 
@@ -176,6 +175,7 @@ if __name__ == '__main__':
             # variables['params']['Dense_0']['kernel'] *= self.init_std ** 0.5
             # variables['params']['Dense_1']['kernel'] *= self.init_std ** 0.5
             return variables
+
 
 
     print('testing parametrization')

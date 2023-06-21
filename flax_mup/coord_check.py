@@ -15,6 +15,7 @@ import optax
 from flax import linen as nn
 import jax
 
+
 def cov(x):
     '''Treat `x` as a collection of vectors and its Gram matrix.
     Input:
@@ -217,7 +218,7 @@ def _get_coord_data(models: T.Dict[int, T.Callable], dataloader, optcls, nsteps=
                     output_name='loss', lossfn='xent', filter_module_by_name=None,
                     fix_data=True, cuda=True, nseeds=1,
                     output_fdict=None, input_fdict=None, param_fdict=None,
-                    show_progress=True, one_hot_target=False,opt_str='sgd'):
+                    show_progress=True, one_hot_target=False, opt_str='sgd'):
     '''Inner method for `get_coord_data`.
 
     Train the models in `models` with optimizer given by `optcls` and data from
@@ -306,62 +307,70 @@ def _get_coord_data(models: T.Dict[int, T.Callable], dataloader, optcls, nsteps=
 
             if mup_state is not None:
                 from .mup import Mup
-                mup_state:Mup
-                optcls = mup_state.wrap_optimizer(optcls,opt_str!='sgd')
+                mup_state: Mup
+                optcls = mup_state.wrap_optimizer(optcls, opt_str != 'sgd')
             opt_state = optcls.init(variables['params'])
             for batch_idx, batch in enumerate(dataloader, 1):
                 batch = jax.tree_util.tree_map(lambda x: jnp.asarray(x.numpy()), batch)
 
-
-                def get_loss(state,batch):
+                def get_loss(state, batch):
                     nonlocal model
                     if dict_in_out:
 
-                        outputs = model.apply(state,batch)
+                        outputs = model.apply(state, batch)
                         loss = outputs[output_name] if isinstance(outputs, dict) else outputs[0]
                     else:
                         (data, target) = batch
                         if flatten_input:
-                            data = jnp.reshape(data,(data.shape[0], -1))
-                        output, trace = model.apply(state,data,rngs=dict(params=jax.random.PRNGKey(0), sample=jax.random.PRNGKey(1)))
+                            data = jnp.reshape(data, (data.shape[0], -1))
+                        output, trace = model.apply(state, data, rngs=dict(params=jax.random.PRNGKey(0),
+                                                                           sample=jax.random.PRNGKey(1)))
                         if flatten_output:
                             output = jnp.reshape(output, (output.shape[0], -1))
                         if one_hot_target:
-                            target = nn.one_hot(target,num_classes=output.shape(-1)).float()
+                            target = nn.one_hot(target, num_classes=output.shape(-1)).float()
                         if lossfn == 'xent':
                             loss = optax.softmax_cross_entropy(output, target)
                         elif lossfn == 'mse':
                             loss = optax.l2_loss(output, target)
                         elif lossfn == 'nll':
-                            loss = optax.softmax_cross_entropy_with_integer_labels(output,target)
+                            loss = optax.softmax_cross_entropy_with_integer_labels(output, target)
                         elif lossfn == 'l1':
                             loss = jnp.abs(output - target)
+                        elif lossfn == 'vae_mse':
+                            loss = optax.l2_loss(
+                                output,
+                                jnp.moveaxis(
+                                    jnp.reshape(data, (data.shape[0], 3, 32, 32)),
+                                    1,-1
+                                )
+                            )
                         elif callable(lossfn):
                             loss = lossfn(output, target)
                         else:
                             raise NotImplementedError(f'unknown `lossfn`: {lossfn}')
                     return jnp.mean(loss), trace
 
-                grad_fn = jax.value_and_grad(get_loss,has_aux=True)
-                (_,trace), grads = grad_fn(variables,batch)
-                updates,opt_state = optcls.update(
+                grad_fn = jax.value_and_grad(get_loss, has_aux=True)
+                (_, trace), grads = grad_fn(variables, batch)
+                updates, opt_state = optcls.update(
                     updates=grads['params'],
                     params=variables['params'],
                     state=opt_state
                 )
-                variables['params'] = optax.apply_updates(variables['params'],updates)
+                variables['params'] = optax.apply_updates(variables['params'], updates)
 
                 # Hooks
                 # Traverse the trace
-                for layer,idx in enumerate(range(0,len(trace),2)):
+                for layer, idx in enumerate(range(0, len(trace), 2)):
                     module_name = list(variables['params'].keys())[layer]
                     f = _record_coords(df, width, module_name, batch_idx,
-                                   output_fdict=output_fdict,
-                                   input_fdict=input_fdict,
-                                   param_fdict=param_fdict)
+                                       output_fdict=output_fdict,
+                                       input_fdict=input_fdict,
+                                       param_fdict=param_fdict)
                     x = trace[idx]
-                    y = trace[idx+1]
-                    f(variables['params'][module_name],x,y)
+                    y = trace[idx + 1]
+                    f(variables['params'][module_name], x, y)
                 if batch_idx == nsteps: break
             if show_progress:
                 pbar.update(1)
@@ -466,7 +475,7 @@ def get_coord_data(models: T.Dict[int, T.Callable], dataloader, optimizer='sgd',
     elif optimizer is None:
         raise ValueError('optimizer should be sgd|adam|adamw or a custom function')
 
-    data = _get_coord_data(models, dataloader, optcls,opt_str=optimizer, **kwargs)
+    data = _get_coord_data(models, dataloader, optcls, opt_str=optimizer, **kwargs)
     data['optimizer'] = optimizer
     data['lr'] = lr
     return data
