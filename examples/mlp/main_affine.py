@@ -11,10 +11,9 @@ import jax.numpy as jnp
 from flax import linen as nn
 import typing as T
 
-# import os
-# os.environ['KMP_DUPLICATE_LIB_OK'] = "TRUE"
+
 from flax_mup.coord_check import get_coord_data, plot_coord_data
-from flax_mup import Mup, Readout
+from flax_mup import Mup, Readout, ReadoutAffine
 
 
 def coord_check(mup: bool, lr, train_loader, nsteps, nseeds, args, plotdir='', legend=False):
@@ -163,7 +162,8 @@ if __name__ == '__main__':
             x = self.nonlin(x)
             x = x * self.output_mult
             trace.append(x)
-            x = Readout(self.num_classes, use_bias=False)(x)  # 1. Replace output layer with Readout layer
+            x = nn.Dense(self.num_classes,use_bias=False)(x)
+            x = ReadoutAffine()(x)
             trace.append(x)
             return x, trace
 

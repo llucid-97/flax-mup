@@ -20,10 +20,10 @@ from flax_mup import Mup, Readout
 def coord_check(mup: bool, lr, train_loader, nsteps, nseeds, args, plotdir='', legend=False):
     def gen(w, standparam=False):
         def f():
-            model = MLP(width=w,
-                        nonlin=nn.tanh,
-                        output_mult=args.output_mult,
-                        input_mult=args.input_mult)
+            model = ConvNet(width=w,
+                            nonlin=nn.tanh,
+                            output_mult=args.output_mult,
+                            input_mult=args.input_mult)
 
             init_input = jnp.zeros((1, 3072))
             variables = model.init(jax.random.PRNGKey(0), init_input)
@@ -32,10 +32,10 @@ def coord_check(mup: bool, lr, train_loader, nsteps, nseeds, args, plotdir='', l
                 mup_state = None
             else:
                 mup_state = Mup()
-                base_model = MLP(width=args.base_width,
-                                 nonlin=nn.tanh,
-                                 output_mult=args.output_mult,
-                                 input_mult=args.input_mult)
+                base_model = ConvNet(width=args.base_width,
+                                     nonlin=nn.tanh,
+                                     output_mult=args.output_mult,
+                                     input_mult=args.input_mult)
                 base_vars = base_model.init(jax.random.PRNGKey(0), init_input)
                 base_vars = model.scale_parameters(base_vars.unfreeze())
 
@@ -142,7 +142,7 @@ if __name__ == '__main__':
                              num_workers=2)
 
 
-    class MLP(nn.Module):
+    class ConvNet(nn.Module):
         width: int = 128
         num_classes: int = 10
         nonlin: T.Callable = nn.relu
@@ -153,24 +153,27 @@ if __name__ == '__main__':
         @nn.compact
         def __call__(self, x):
             trace = [x]
-            x = nn.Dense(self.width, use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
-            trace.append(x)
+            flatten = lambda x:jnp.reshape(x,(x.shape[0],-1))
+            x = jnp.reshape(x,(x.shape[0],3,32,32))
+            x = jnp.moveaxis(x,1,-1)
+            x = nn.Conv(self.width,(3,3), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
+            trace.append(flatten(x))
             x = x * self.input_mult ** 0.5
             x = self.nonlin(x)
-            trace.append(x)
-            x = nn.Dense(self.width, use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
-            trace.append(x)
+            trace.append(flatten(x))
+            x = nn.Conv(self.width,(3,3), use_bias=False, kernel_init=nn.initializers.kaiming_normal())(x)
+            trace.append(flatten(x))
             x = self.nonlin(x)
             x = x * self.output_mult
-            trace.append(x)
-            x = Readout(self.num_classes, use_bias=False)(x)  # 1. Replace output layer with Readout layer
-            trace.append(x)
+            trace.append(flatten(x))
+            x = Readout(self.num_classes, use_bias=False)(flatten(x))  # 1. Replace output layer with Readout layer
+            trace.append(flatten(x))
             return x, trace
 
         def scale_parameters(self, variables):
-            variables['params']['Dense_0']['kernel'] /= self.input_mult ** 0.5
-            variables['params']['Dense_0']['kernel'] *= self.init_std ** 0.5
-            variables['params']['Dense_1']['kernel'] *= self.init_std ** 0.5
+            # variables['params']['Dense_0']['kernel'] /= self.input_mult ** 0.5
+            # variables['params']['Dense_0']['kernel'] *= self.init_std ** 0.5
+            # variables['params']['Dense_1']['kernel'] *= self.init_std ** 0.5
             return variables
 
 
