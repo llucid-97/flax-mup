@@ -1,3 +1,7 @@
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = "TRUE"
+os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
+
 from torch.utils.data import DataLoader
 import numpy as np
 from torchvision import datasets, transforms
@@ -6,7 +10,7 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 import typing as T
-
+from tensorflow_probability.substrates.jax import distributions as tfd
 # import os
 # os.environ['KMP_DUPLICATE_LIB_OK'] = "TRUE"
 from flax_mup.coord_check import get_coord_data, plot_coord_data
@@ -16,23 +20,23 @@ from flax_mup import Mup, Readout
 def coord_check(mup: bool, lr, train_loader, nsteps, nseeds, args, plotdir='', legend=False):
     def gen(w, standparam=False):
         def f():
-            model = MLP(width=w,
-                        nonlin=nn.tanh,
-                        output_mult=args.output_mult,
-                        input_mult=args.input_mult)
+            model = Gaussian(width=w,
+                             nonlin=nn.tanh,
+                             output_mult=args.output_mult,
+                             input_mult=args.input_mult)
 
             init_input = jnp.zeros((1, 3072))
-            variables = model.init(jax.random.PRNGKey(0), init_input)
+            variables = model.init(dict(params=jax.random.PRNGKey(0), sample=jax.random.PRNGKey(1)), init_input)
             variables = model.scale_parameters(variables.unfreeze())
             if standparam:
                 mup_state = None
             else:
                 mup_state = Mup()
-                base_model = MLP(width=args.base_width,
-                                 nonlin=nn.tanh,
-                                 output_mult=args.output_mult,
-                                 input_mult=args.input_mult)
-                base_vars = base_model.init(jax.random.PRNGKey(0), init_input)
+                base_model = Gaussian(width=args.base_width,
+                                      nonlin=nn.tanh,
+                                      output_mult=args.output_mult,
+                                      input_mult=args.input_mult)
+                base_vars = base_model.init(dict(params=jax.random.PRNGKey(0), sample=jax.random.PRNGKey(1)), init_input)
                 base_vars = model.scale_parameters(base_vars.unfreeze())
 
                 mup_state.set_base_shapes(base_vars)
@@ -138,7 +142,7 @@ if __name__ == '__main__':
                              num_workers=2)
 
 
-    class MLP(nn.Module):
+    class Gaussian(nn.Module):
         width: int = 128
         num_classes: int = 10
         nonlin: T.Callable = nn.relu
@@ -159,7 +163,11 @@ if __name__ == '__main__':
             x = self.nonlin(x)
             x = x * self.output_mult
             trace.append(x)
-            x = Readout(self.num_classes, use_bias=False)(x)  # 1. Replace output layer with Readout layer
+            mu = Readout(self.num_classes, use_bias=False)(x)  # 1. Replace output layer with Readout layer
+            std = Readout(self.num_classes, use_bias=False)(x)  # 1. Replace output layer with Readout layer
+            std = nn.softplus(std) + 1e-3
+            dist = tfd.Normal(mu,std)
+            x = dist.sample(seed=self.make_rng('sample'))
             trace.append(x)
             return x, trace
 

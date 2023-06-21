@@ -323,7 +323,7 @@ def _get_coord_data(models: T.Dict[int, T.Callable], dataloader, optcls, nsteps=
                         (data, target) = batch
                         if flatten_input:
                             data = jnp.reshape(data,(data.shape[0], -1))
-                        output, trace = model.apply(state,data)
+                        output, trace = model.apply(state,data,rngs=dict(params=jax.random.PRNGKey(0), sample=jax.random.PRNGKey(1)))
                         if flatten_output:
                             output = jnp.reshape(output, (output.shape[0], -1))
                         if one_hot_target:
