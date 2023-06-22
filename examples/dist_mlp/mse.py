@@ -1,4 +1,6 @@
+import functools
 import os
+
 os.environ['KMP_DUPLICATE_LIB_OK'] = "TRUE"
 os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
 
@@ -14,7 +16,7 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 # import os
 # os.environ['KMP_DUPLICATE_LIB_OK'] = "TRUE"
 from flax_mup.coord_check import get_coord_data, plot_coord_data
-from flax_mup import Mup, Readout
+from flax_mup import Mup, Readout, ReadoutAbstract
 
 
 def coord_check(mup: bool, lr, train_loader, nsteps, nseeds, args, plotdir='', legend=False):
@@ -36,7 +38,8 @@ def coord_check(mup: bool, lr, train_loader, nsteps, nseeds, args, plotdir='', l
                                  nonlin=nn.tanh,
                                  output_mult=args.output_mult,
                                  input_mult=args.input_mult)
-                base_vars = base_model.init(dict(params=jax.random.PRNGKey(0), sample=jax.random.PRNGKey(1)), init_input)
+                base_vars = base_model.init(dict(params=jax.random.PRNGKey(0), sample=jax.random.PRNGKey(1)),
+                                            init_input)
                 base_vars = model.scale_parameters(base_vars.unfreeze())
 
                 mup_state.set_base_shapes(base_vars)
@@ -163,8 +166,8 @@ if __name__ == '__main__':
             x = self.nonlin(x)
             x = x * self.output_mult
             trace.append(x)
-            x = Readout(self.num_classes, use_bias=False)(x)  # 1. Replace output layer with Readout layer
-            dist = tfd.Normal(x,1.0)
+            x = ReadoutAbstract(functools.partial(nn.Dense, self.num_classes, use_bias=False))(x)
+            dist = tfd.Normal(x, 1.0)
             x = dist.sample(seed=self.make_rng('sample'))
             trace.append(x)
             return x, trace

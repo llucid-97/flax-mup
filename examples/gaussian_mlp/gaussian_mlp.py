@@ -31,7 +31,7 @@ def coord_check(mup: bool, lr, train_loader, nsteps, nseeds, args, plotdir='', l
             if standparam:
                 mup_state = None
             else:
-                mup_state = Mup()
+                mup_state = Mup(readout_zero_init=False)
                 base_model = Gaussian(width=args.base_width,
                                       nonlin=nn.tanh,
                                       output_mult=args.output_mult,
