@@ -8,7 +8,6 @@ from itertools import product
 
 import jax.experimental.maps
 import numpy as np
-import pandas as pd
 import typing as T
 from jax import numpy as jnp
 import optax
@@ -290,6 +289,7 @@ def _get_coord_data(models: T.Dict[int, T.Callable], dataloader, optcls, nsteps=
         behavior by setting `one_hot_target=True`.
 
     '''
+    import pandas as pd
 
     df = []
     if fix_data:
@@ -522,6 +522,8 @@ def plot_coord_data(df, y='l1', save_to=None, suptitle=None, x='width', hue='mod
         the `matplotlib` figure object
     '''
     ### preprocessing
+    import pandas as pd
+
     df = copy(df)
     # nn.Sequential has name '', which duplicates the output layer
     df = df[df.module != '']

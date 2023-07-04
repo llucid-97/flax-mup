@@ -36,6 +36,7 @@ class Mup:
         self.base_shapes = jax.tree_util.tree_map(lambda x: Namespace(shape=x.shape), maybe_unfreeze(variables))
 
     def set_target_shapes(self, variables):
+        variables = maybe_unfreeze(variables)
         from functools import partial
 
         shapes = jax.tree_util.tree_map(lambda x: Namespace(shape=x.shape), maybe_unfreeze(variables))
@@ -49,7 +50,7 @@ class Mup:
         self._width_mults = jax.tree_util.tree_map(f_width_mults, self.base_shapes, variables)
 
         from flatdict import FlatDict
-        fdp = FlatDict(maybe_unfreeze(variables))
+        fdp = FlatDict(variables)
         wm = FlatDict(self._width_mults)
         for k in dict(fdp):
             if ("Readout" in k) and ("kernel" in k):
@@ -61,9 +62,9 @@ class Mup:
                 k_mup_divisor = ':'.join(path)
                 fdp[k_mup_divisor] *= wm[k]
                 if self.readout_zero_init:
-                    fdp[k] *= 0.
+                    fdp[k] = fdp[k] * 0.
                 else:
-                    fdp[k] /= (1 / wm[k]) ** 0.5
+                    fdp[k] = fdp[k] / ((1 / wm[k]) ** 0.5)
 
         return fdp.as_dict()
 
