@@ -574,3 +574,46 @@ def plot_coord_data(df, y='l1', save_to=None, suptitle=None, x='width', hue='mod
         print(f'coord check plot saved to {save_to}')
 
     return fig
+
+
+# example of how to plot coord check results
+# for the CNN and MLP models in mup.test
+def example_plot_coord_check(
+        arch='mlp', optimizer='sgd', lr=None, widths=None, mup=True,
+        nsteps=3, nseeds=10, plotdir='', batchnorm=False, batch_size=1,
+        init='kaiming_fan_in_normal', download_cifar=True, legend='full',
+        dict_in_out=False, name_contains=None, name_not_contains=None):
+    raise NotImplementedError("TODO")
+    from mup.test.models import get_lazy_models, get_train_loader
+    if batchnorm:
+        batch_size = 5
+    train_loader = get_train_loader(batch_size=batch_size, download=download_cifar)
+
+    if widths is None:
+        widths = 2 ** np.arange(7, 14) if arch == 'mlp' else 2 ** np.arange(3, 10)
+    models = get_lazy_models(arch, widths, mup=mup, batchnorm=batchnorm, init=init, readout_zero_init=True)
+    df = get_coord_data(models, train_loader, mup=mup, lr=lr, optimizer=optimizer, flatten_input=arch == 'mlp',
+                        nseeds=nseeds, nsteps=nsteps, dict_in_out=dict_in_out)
+
+    prm = 'μP' if mup else 'SP'
+    bn = 'on' if batchnorm else 'off'
+    if lr is None:
+        lr = 0.1 if optimizer == 'sgd' else 1e-3
+    return plot_coord_data(df, legend=legend,
+                           name_contains=name_contains, name_not_contains=name_not_contains,
+                           save_to=os.path.join(plotdir,
+                                                f'{prm.lower()}_{arch}_{optimizer}_lr{lr}_nseeds{nseeds}_bn{int(batchnorm)}_coord.png'),
+                           suptitle=f'{prm} {arch.upper()} {optimizer} lr={lr} bn={bn} nseeds={nseeds}',
+                           face_color='xkcd:light grey' if not mup else None)
+
+if __name__ == '__main__':
+    import os
+
+    os.makedirs('coord_checks', exist_ok=True)
+    plotdir = 'coord_checks'
+
+    nseeds = 5
+
+    for arch, opt, bn, mup in product(['mlp', 'cnn'], ['sgd', 'adam'], [False, True], [False, True]):
+        example_plot_coord_check(arch, opt, batchnorm=bn, mup=mup, nseeds=nseeds, download_cifar=True, legend=None,
+                                 plotdir=plotdir)

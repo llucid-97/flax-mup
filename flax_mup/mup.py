@@ -12,6 +12,7 @@ from jax import numpy as jnp
 import optax
 from argparse import Namespace
 from .module import Readout
+from flax.core.frozen_dict import FrozenDict
 
 
 def get_shapes(params):
@@ -66,13 +67,22 @@ class Mup:
                 else:
                     fdp[k] = fdp[k] / ((1 / wm[k]) ** 0.5)
 
-        return fdp.as_dict()
+        return FrozenDict(fdp.as_dict())
 
-    def wrap_optimizer(self, optimizer, adam=True):
-        """Apply the per-parameter learning rates computed by `init_context` to an Optax optimizer."""
+    def wrap_optimizer(self, optimizer, adam=True,wrap_in_param_dict=True):
+        """Apply the per-parameter learning rates computed by `init_context` to an Optax optimizer.
+        # TODO: Add docstrings
+                wrap_in_param_dict: a hack to make it coherent with my way (the best way; i will die on this hill)
+                of passing params.
+        """
+
         if not self._adam_lrs:
             raise ValueError(
                 'Attempted to wrap optimizer before initializing network. Did you forget to use init_base/init_target/apply_mup?')
+
+        lrs = self._adam_lrs if adam else self._sgd_lrs
+        lrs = {'params': lrs} if wrap_in_param_dict else lrs
+        lrs = FrozenDict(lrs)
 
         def init_fn(params):
             return optax.EmptyState()
@@ -81,7 +91,7 @@ class Mup:
             updates = jax.tree_map(
                 lambda update, scale: update * scale,
                 updates,
-                self._adam_lrs if adam else self._sgd_lrs
+                lrs
             )
 
             return updates, state
