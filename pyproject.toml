@@ -1,16 +1,16 @@
 [tool.poetry]
 name = "flax-mup"
-version = "0.1.5"
+version = "0.1.6"
 description = "A simple port of μP  to Flax/JAX."
 authors = ["Gershom Agim <gershom.agim@zf.com>"]
 license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.7"
-jax = "^0.3.7"
-flax = "^0.6.0"
-optax = "^0.1.2"
+python = ">=3.7"
+jax = ">=0.3.7"
+flax = ">=0.6.0"
+optax = ">=0.1.2"
 
 [tool.poetry.dev-dependencies]
 
